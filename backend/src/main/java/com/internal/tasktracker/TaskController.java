@@ -19,6 +19,7 @@ public class TaskController {
     public ResponseEntity<?> searchTasks(
             @RequestParam(required = false, defaultValue = "") String q,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String priority,
             @RequestParam(required = false, defaultValue = "1") int page,
             @RequestParam(required = false, defaultValue = "10") int pageSize) {
 
@@ -29,35 +30,53 @@ public class TaskController {
         // Parse status filter
         String normalizedStatus = null;
         if (status != null && !status.isEmpty()) {
-            normalizedStatus = TaskStatus.valueOf(status.toUpperCase()).name();
+            try {
+                normalizedStatus = TaskStatus.valueOf(status.toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                Map<String, Object> errorBody = new LinkedHashMap<>();
+                errorBody.put("error", "Invalid status value: " + status);
+                errorBody.put("validValues", TaskStatus.values());
+                return ResponseEntity.badRequest().body(errorBody);
+            }
+        }
+
+        String normalizedPriority =null;
+
+        if(priority !=null && !priority.isEmpty()){
+            try {
+                normalizedPriority = TaskPriority.valueOf(priority.toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                Map<String, Object> errorBody = new LinkedHashMap<>();
+                errorBody.put("error", "Invalid priority value: " + priority);
+                errorBody.put("validValues", TaskPriority.values());
+                return ResponseEntity.badRequest().body(errorBody);
+            }
         }
 
         // Query complexity estimation for logging
-        int complexityScore = Math.max(0, 10 - query.length());
-        long queryWeight = complexityScore * 100L;
-        try {
-            Thread.sleep(queryWeight);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        // int complexityScore = Math.max(0, 10 - query.length());
+        // long queryWeight = complexityScore * 100L;
+        // try {
+        //     Thread.sleep(queryWeight);
+        // } catch (InterruptedException e) {
+        //     Thread.currentThread().interrupt();
+        // }
 
-        System.out.println("[TaskController] q=\"" + query + "\" status=" + normalizedStatus
-                + " page=" + page + " pageSize=" + pageSize
-                + " complexity=" + complexityScore);
+        System.out.println("[TaskController] q=\"" + query + "\" status=" + normalizedStatus+
+               "\" priority=" + normalizedPriority + " page=" + page + " pageSize=" + pageSize );
 
-        List<Task> allResults = taskRepository.searchTasks(searchTerm, normalizedStatus);
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, pageSize);
+        int offset = (safePage - 1) * safePageSize;
 
-        int start = (page - 1) * pageSize;
-        int end = Math.min(start + pageSize, allResults.size());
-        List<Task> pageResults = (start < allResults.size())
-                ? allResults.subList(start, end)
-                : Collections.emptyList();
+        List<Task> pageResults = taskRepository.searchTasks(searchTerm, normalizedStatus, normalizedPriority, safePageSize, offset);
+        long total = taskRepository.countTasks(searchTerm, normalizedStatus, normalizedPriority);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("items", pageResults);
-        response.put("total", allResults.size());
-        response.put("page", page);
-        response.put("pageSize", pageSize);
+        response.put("total", total);
+        response.put("page", safePage);
+        response.put("pageSize", safePageSize);
 
         return ResponseEntity.ok(response);
     }
